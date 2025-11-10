@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.IOException;
+
 /**
  * Finder
  * A puzzle written by Zach Blick
@@ -7,84 +8,131 @@ import java.io.IOException;
  * At Menlo School in Atherton, CA
  *
  * Completed by: Eisha Yadav
- **/
-
+ */
 
 public class Finder {
-
     private static final String INVALID = "INVALID KEY";
-    private Node[] table;
-    // Set size to large prime number (used AI to generate number)
-    private static final int TABLE_SIZE = 100003;
+    // Large Prime Number -> Sourced from ChatGPT
+    private static final int DEFAULT_TABLE_SIZE = 100003;
+    // Base for Polynomial Hashing
+    private static final int R = 31;
 
-    // Initialize Table
+    private int tableSize;
+    // Number of Keys currently in table
+    private int n;
+    private String[] keys;
+    private String[] values;
+
     public Finder() {
-        table = new Node[TABLE_SIZE];
+        this.tableSize = DEFAULT_TABLE_SIZE;
+        this.keys = new String[tableSize];
+        this.values = new String[tableSize];
+        this.n = 0;
     }
 
-    // Read csv input files
+    // Build the table from a CSV file
     public void buildTable(BufferedReader br, int keyCol, int valCol) throws IOException {
         String line;
         while ((line = br.readLine()) != null) {
             String[] elements = line.split(",");
             if (elements.length > Math.max(keyCol, valCol)) {
-                String key = elements[keyCol].trim();
-                String value = elements[valCol].trim();
-                // Insert Key Value Pair into Hash Data Structure
-                put(key, value);
+                String key = elements[keyCol];
+                String value = elements[valCol];
+                add(key, value);
             }
         }
         br.close();
     }
 
-    // Retrieve Value Associated With the Key
-    public String query(String key){
+    // Query the table
+    public String query(String key) {
         return get(key);
     }
 
-    // Hash function
+    // Polynomial rolling hash
+    // Using Horners Method from Slides
     private int hash(String key) {
-        int hash = 0;
+        long h = 0;
         for (int i = 0; i < key.length(); i++) {
-            // Very simple hash function -- not the polynomial rolling hash yet
-            hash = (31 * hash + key.charAt(i)) % TABLE_SIZE;
+            h = (h * R + key.charAt(i)) % tableSize;
         }
-        return Math.abs(hash);
+        return (int) h;
     }
 
-    // Insert Key Value pairs into tab;e
-    private void put(String key, String value) {
-        int index = hash(key);
-        Node head = table[index];
-        // Puts the value of the key at the nodes of the tree with the key
-        for (Node curr = head; curr != null; curr = curr.next) {
-            if (curr.key.equals(key)) {
-                curr.value = value;
+    // Add key-value pair (linear probing)
+    // Resize if table is halfway full
+    private void add(String key, String value) {
+        if ((double) n / tableSize >= 0.5) {
+            resize();
+        }
+
+        int i = hash(key);
+        while (keys[i] != null) {
+            if (keys[i].equals(key)) {
+                // Update the existing key
+                values[i] = value; // update existing key
                 return;
             }
+            // Linear probe
+            i = (i + 1) % tableSize;
         }
-        // Sets next node to the key value pair
-        // Connects new node to current node
-        Node newNode = new Node(key, value);
-        newNode.next = head;
-        table[index] = newNode;
+
+        keys[i] = key;
+        values[i] = value;
+        n++;
     }
 
-    // Retrieve Values from table
+    // Retrieve value
     private String get(String key) {
-        int index = hash(key);
-        Node curr = table[index];
-        // Continue to search for key in the graph until found
-        while (curr != null) {
-            if (curr.key.equals(key)) {
-                // Return value
-                return curr.value;
+        int i = hash(key);
+        int start = i;
+
+        while (keys[i] != null) {
+            if (keys[i].equals(key)) {
+                return values[i];
             }
-            // Move through the graph
-            curr = curr.next;
+            i = (i + 1) % tableSize;
+            // Ensure a full loop
+            if (i == start) break;
         }
+
         return INVALID;
     }
 
-}
+    // Resize table when α > 0.5
+    private void resize() {
+        int oldSize = tableSize;
+        tableSize = nextPrime(tableSize * 2);
 
+        String[] oldKeys = keys;
+        String[] oldValues = values;
+
+        keys = new String[tableSize];
+        values = new String[tableSize];
+        n = 0;
+
+        // Reinsert old pairs
+        for (int i = 0; i < oldSize; i++) {
+            if (oldKeys[i] != null) {
+                add(oldKeys[i], oldValues[i]);
+            }
+        }
+    }
+
+    // Find next prime number ≥ n (for better hashing distribution)
+    // Provides a slight speedup (which is needed considering my sad runtime performance thusfar..)
+    private int nextPrime(int n) {
+        while (!isPrime(n)) n++;
+        return n;
+    }
+
+    // Function to determine if a number is prime
+    private boolean isPrime(int n) {
+        if (n < 2) return false;
+        if (n % 2 == 0 && n != 2) return false;
+        for (int i = 3; i * i <= n; i += 2) {
+            if (n % i == 0) return false;
+        }
+        return true;
+    }
+}
